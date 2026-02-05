@@ -17,6 +17,7 @@ interface DownloadResult {
 export function DownloadForm() {
     const [url, setUrl] = useState("");
     const [loading, setLoading] = useState(false);
+    const [downloading, setDownloading] = useState(false);
     const [error, setError] = useState("");
     const [copied, setCopied] = useState(false);
     const [showExternalOption, setShowExternalOption] = useState(false);
@@ -39,30 +40,57 @@ export function DownloadForm() {
         return false;
     };
 
+    const extractUrl = (text: string): string => {
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        const match = text.match(urlRegex);
+        return match ? match[0] : text;
+    };
+
     const handlePaste = async () => {
         try {
             const text = await navigator.clipboard.readText();
-            setUrl(text);
-            setError("");
-            setShowExternalOption(false);
-            setResult(null);
+            const extractedUrl = extractUrl(text);
+            setUrl(extractedUrl);
+            setError(""); // Keep existing error clear
+            setShowExternalOption(false); // Keep existing option clear
+            setResult(null); // Keep existing result clear
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
-        } catch {
-            setError("Could not access clipboard");
+
+            // Auto download if valid URL found
+            if (extractedUrl && extractedUrl !== text) { // Simplified condition: if a URL was extracted and it's different from the raw text
+                handleDownload(extractedUrl);
+            } else if (extractedUrl && extractedUrl === text && validateUrl(extractedUrl)) { // If the text itself is a valid URL, also auto-download
+                handleDownload(extractedUrl);
+            }
+        } catch (err) {
+            console.error("Failed to read clipboard:", err);
+            setError("Could not access clipboard"); // Re-add specific error message
         }
     };
 
-    const handleDownload = async () => {
-        if (!url.trim()) {
+    const handleDownload = async (overrideUrl?: string | unknown) => {
+        const inputUrl = (typeof overrideUrl === "string" ? overrideUrl : "") || url;
+        const targetUrl = extractUrl(inputUrl); // Also extract if typed/pasted manually without the paste button
+
+        if (!targetUrl.trim()) { // Use targetUrl for validation
             setError("Please enter a URL");
             return;
         }
 
-        const platform = detectPlatform(url);
+        // Update state if we extracted a clean URL from a messy input
+        if (targetUrl !== inputUrl) {
+            setUrl(targetUrl);
+        }
+
+        setError("");
+        setShowExternalOption(false);
+        setResult(null);
+        setLoading(true);
+
+        const platform = detectPlatform(targetUrl); // Use targetUrl for platform detection
         if (!platform) {
             setError("Unsupported URL. Please use Instagram or StarMaker links.");
-            return;
         }
 
         if (!validateUrl(url)) {
@@ -108,6 +136,7 @@ export function DownloadForm() {
     const downloadMedia = async () => {
         if (!result?.url) return;
 
+        setDownloading(true);
         try {
             const response = await fetch(result.url);
             const blob = await response.blob();
@@ -125,6 +154,8 @@ export function DownloadForm() {
             URL.revokeObjectURL(blobUrl);
         } catch {
             window.open(result.url, "_blank");
+        } finally {
+            setDownloading(false);
         }
     };
 
@@ -240,42 +271,97 @@ export function DownloadForm() {
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: 10 }}
-                            className="mt-6 p-4 bg-green-500/10 border border-green-500/20 rounded-xl"
+                            className="mt-8"
                         >
-                            <div className="flex items-start gap-4">
-                                {result.thumbnail ? (
-                                    <img
-                                        src={result.thumbnail}
-                                        alt="Preview"
-                                        className="w-20 h-20 rounded-lg object-cover"
-                                    />
-                                ) : (
-                                    <div className="w-20 h-20 rounded-lg bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center">
-                                        {result.platform === "starmaker" ? (
-                                            <Music className="w-8 h-8 text-white" />
-                                        ) : (
-                                            <Play className="w-8 h-8 text-white" />
-                                        )}
-                                    </div>
-                                )}
-                                <div className="flex-1">
-                                    <p className="text-sm text-green-500 font-medium mb-1">
-                                        ✓ Media found!
-                                    </p>
-                                    {result.title && (
-                                        <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
-                                            {result.title}
-                                        </p>
-                                    )}
-                                    <motion.button
-                                        whileHover={{ scale: 1.02 }}
-                                        whileTap={{ scale: 0.98 }}
-                                        onClick={downloadMedia}
-                                        className="px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-medium flex items-center gap-2"
+                            <div className="relative overflow-hidden rounded-2xl bg-secondary/30 border border-white/10 p-6 backdrop-blur-md">
+                                {/* Background Glow */}
+                                <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${result.platform === "starmaker"
+                                    ? "from-orange-500/20 to-red-500/20"
+                                    : "from-pink-500/20 to-purple-500/20"
+                                    } rounded-full blur-3xl -z-10`} />
+
+                                <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
+                                    {/* Thumbnail */}
+                                    <motion.div
+                                        initial={{ scale: 0.9, opacity: 0 }}
+                                        animate={{ scale: 1, opacity: 1 }}
+                                        className="relative shrink-0"
                                     >
-                                        <Download className="w-4 h-4" />
-                                        Save {result.type === "video" ? "Video" : result.type === "audio" ? "Audio" : "Image"}
-                                    </motion.button>
+                                        <div className={`absolute inset-0 rounded-2xl blur-lg opacity-50 ${result.platform === "starmaker"
+                                            ? "bg-gradient-to-br from-orange-500 to-red-500"
+                                            : "bg-gradient-to-br from-pink-500 to-purple-500"
+                                            }`} />
+                                        {result.thumbnail ? (
+                                            <img
+                                                src={result.thumbnail}
+                                                alt="Preview"
+                                                className="relative w-32 h-32 md:w-24 md:h-24 rounded-2xl object-cover shadow-xl border border-white/20"
+                                            />
+                                        ) : (
+                                            <div className="relative w-32 h-32 md:w-24 md:h-24 rounded-2xl bg-secondary flex items-center justify-center border border-white/10">
+                                                {result.platform === "starmaker" ? (
+                                                    <Music className="w-10 h-10 text-muted-foreground" />
+                                                ) : (
+                                                    <Play className="w-10 h-10 text-muted-foreground" />
+                                                )}
+                                            </div>
+                                        )}
+                                    </motion.div>
+
+                                    {/* Content Info */}
+                                    <div className="flex-1 text-center md:text-left space-y-4 w-full">
+                                        <div>
+                                            <div className="flex items-center justify-center md:justify-start gap-2 mb-2">
+                                                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${result.platform === "starmaker"
+                                                    ? "bg-orange-500/10 text-orange-500 border border-orange-500/20"
+                                                    : "bg-pink-500/10 text-pink-500 border border-pink-500/20"
+                                                    }`}>
+                                                    <CheckCircle2 className="w-3 h-3" />
+                                                    Media Ready
+                                                </span>
+                                                <span className="px-3 py-1 rounded-full text-xs font-medium bg-secondary text-muted-foreground border border-white/5 capitalize">
+                                                    {result.type}
+                                                </span>
+                                            </div>
+
+                                            <h3 className="font-medium text-lg leading-tight line-clamp-2">
+                                                {result.title || "Ready to download"}
+                                            </h3>
+                                        </div>
+
+                                        <div className="flex flex-col sm:flex-row gap-3">
+                                            <motion.button
+                                                whileHover={{ scale: 1.02 }}
+                                                whileTap={{ scale: 0.98 }}
+                                                onClick={downloadMedia}
+                                                disabled={downloading}
+                                                className={`flex-1 h-12 rounded-xl font-medium flex items-center justify-center gap-2 text-white shadow-lg transition-all ${result.platform === "starmaker"
+                                                    ? "bg-gradient-to-r from-orange-500 to-red-600 hover:shadow-orange-500/25"
+                                                    : "bg-gradient-to-r from-pink-500 to-purple-600 hover:shadow-pink-500/25"
+                                                    } ${downloading ? "opacity-80 cursor-wait" : "hover:opacity-90"}`}
+                                            >
+                                                {downloading ? (
+                                                    <>
+                                                        <Loader2 className="w-5 h-5 animate-spin" />
+                                                        Downloading...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Download className="w-5 h-5" />
+                                                        Save {result.type === "video" ? "Video" : result.type === "audio" ? "Audio" : "Image"}
+                                                    </>
+                                                )}
+                                            </motion.button>
+
+                                            <button
+                                                onClick={() => window.open(result.url, "_blank")}
+                                                className="h-12 px-4 rounded-xl bg-secondary/50 hover:bg-secondary border border-white/10 hover:border-white/20 transition-colors flex items-center justify-center"
+                                                title="Open in new tab"
+                                            >
+                                                <ExternalLink className="w-5 h-5 text-muted-foreground" />
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </motion.div>
