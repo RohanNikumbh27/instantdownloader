@@ -2,15 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 
 // Types for the response
 interface MediaData {
-    type: "image" | "video" | "carousel";
+    type: "image" | "video" | "audio" | "carousel";
     url: string;
     thumbnail?: string;
-    caption?: string;
+    title?: string;
     urls?: string[];
+    platform?: "instagram" | "starmaker";
 }
 
-// Helper to extract shortcode from Instagram URL
-function extractShortcode(url: string): string | null {
+// ==================== INSTAGRAM HELPERS ====================
+
+function extractInstagramShortcode(url: string): string | null {
     const patterns = [
         /instagram\.com\/p\/([A-Za-z0-9_-]+)/,
         /instagram\.com\/reel\/([A-Za-z0-9_-]+)/,
@@ -20,22 +22,155 @@ function extractShortcode(url: string): string | null {
 
     for (const pattern of patterns) {
         const match = url.match(pattern);
-        if (match?.[1]) {
-            return match[1];
-        }
+        if (match?.[1]) return match[1];
     }
     return null;
+}
+
+// ==================== STARMAKER HELPERS ====================
+
+function extractStarMakerRecordingId(url: string): string | null {
+    // Match recordingId from URL query params
+    const match = url.match(/recordingId=(\d+)/);
+    return match?.[1] || null;
+}
+
+function isStarMakerUrl(url: string): boolean {
+    return url.includes('starmakerstudios.com') ||
+        url.includes('starmaker.co') ||
+        url.includes('m.starmaker');
+}
+
+function isInstagramUrl(url: string): boolean {
+    return url.includes('instagram.com');
 }
 
 // Clean URL
 function cleanUrl(url: string): string {
     try {
         const urlObj = new URL(url);
-        return `${urlObj.origin}${urlObj.pathname}`;
+        return `${urlObj.origin}${urlObj.pathname}${urlObj.search}`;
     } catch {
         return url;
     }
 }
+
+// ==================== INSTAGRAM DOWNLOAD ====================
+
+async function downloadInstagram(url: string, shortcode: string): Promise<MediaData | null> {
+    // Try Instagram's public embed
+    try {
+        const embedUrl = `https://www.instagram.com/p/${shortcode}/embed/captioned/`;
+        const response = await fetch(embedUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            },
+        });
+
+        if (response.ok) {
+            const html = await response.text();
+
+            const videoMatch = html.match(/"video_url":"([^"]+)"/);
+            if (videoMatch) {
+                return {
+                    type: 'video',
+                    url: videoMatch[1].replace(/\\u0026/g, '&').replace(/\\/g, ''),
+                    platform: 'instagram',
+                };
+            }
+
+            const imageMatch = html.match(/"display_url":"([^"]+)"/);
+            if (imageMatch) {
+                return {
+                    type: 'image',
+                    url: imageMatch[1].replace(/\\u0026/g, '&').replace(/\\/g, ''),
+                    platform: 'instagram',
+                };
+            }
+        }
+    } catch (e) {
+        console.error('Instagram embed error:', e);
+    }
+
+    return null;
+}
+
+// ==================== STARMAKER DOWNLOAD ====================
+
+async function downloadStarMaker(url: string, recordingId: string): Promise<MediaData | null> {
+    // Direct download URL pattern for StarMaker
+    const downloadUrl = `https://static.smintro.com/production/uploading/recordings/${recordingId}/master.mp4`;
+
+    // Verify the URL is accessible
+    try {
+        const response = await fetch(downloadUrl, { method: 'HEAD' });
+
+        if (response.ok) {
+            // Try to fetch metadata from the original page
+            let title = `StarMaker Recording ${recordingId}`;
+            let thumbnail: string | undefined;
+
+            try {
+                const pageResponse = await fetch(url, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    },
+                });
+
+                if (pageResponse.ok) {
+                    const html = await pageResponse.text();
+
+                    // Extract og:title
+                    const titleMatch = html.match(/<meta[^>]*property="og:title"[^>]*content="([^"]+)"/i) ||
+                        html.match(/<meta[^>]*content="([^"]+)"[^>]*property="og:title"/i);
+                    if (titleMatch) {
+                        title = titleMatch[1];
+                    }
+
+                    // Extract og:image
+                    const imageMatch = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/i) ||
+                        html.match(/<meta[^>]*content="([^"]+)"[^>]*property="og:image"/i);
+                    if (imageMatch) {
+                        thumbnail = imageMatch[1];
+                    }
+                }
+            } catch {
+                // Metadata fetch failed, use defaults
+            }
+
+            return {
+                type: 'video',
+                url: downloadUrl,
+                title,
+                thumbnail,
+                platform: 'starmaker',
+            };
+        }
+    } catch (e) {
+        console.error('StarMaker download error:', e);
+    }
+
+    // Try alternative CDN
+    try {
+        const altUrl = `https://static-v7.smintro.com/production/uploading/recordings/${recordingId}/master.mp4`;
+        const response = await fetch(altUrl, { method: 'HEAD' });
+
+        if (response.ok) {
+            return {
+                type: 'video',
+                url: altUrl,
+                title: `StarMaker Recording ${recordingId}`,
+                platform: 'starmaker',
+            };
+        }
+    } catch {
+        // Alt CDN failed
+    }
+
+    return null;
+}
+
+// ==================== MAIN HANDLER ====================
 
 export async function POST(request: NextRequest) {
     try {
@@ -43,145 +178,66 @@ export async function POST(request: NextRequest) {
         const { url } = body;
 
         if (!url) {
-            return NextResponse.json(
-                { error: "URL is required" },
-                { status: 400 }
-            );
-        }
-
-        const shortcode = extractShortcode(url);
-        if (!shortcode) {
-            return NextResponse.json(
-                { error: "Invalid Instagram URL. Please use a valid post, reel, or story URL." },
-                { status: 400 }
-            );
+            return NextResponse.json({ error: "URL is required" }, { status: 400 });
         }
 
         const cleanedUrl = cleanUrl(url);
 
-        // Check for RapidAPI key
-        const rapidApiKey = process.env.RAPIDAPI_KEY;
+        // ========== STARMAKER ==========
+        if (isStarMakerUrl(cleanedUrl)) {
+            const recordingId = extractStarMakerRecordingId(cleanedUrl);
 
-        if (rapidApiKey) {
-            // Use RapidAPI Instagram Downloader
-            try {
-                const response = await fetch('https://instagram-downloader-download-instagram-videos-stories1.p.rapidapi.com/get-info-and-media', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-RapidAPI-Key': rapidApiKey,
-                        'X-RapidAPI-Host': 'instagram-downloader-download-instagram-videos-stories1.p.rapidapi.com'
-                    },
-                    body: JSON.stringify({ url: cleanedUrl })
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-
-                    if (data.Type === 'Post' || data.Type === 'Reel') {
-                        const media = data.media?.[0];
-                        if (media) {
-                            return NextResponse.json({
-                                type: media.type === 'video' ? 'video' : 'image',
-                                url: media.uri,
-                                thumbnail: data.thumbnail,
-                                caption: data.caption,
-                            });
-                        }
-                    }
-                }
-            } catch (e) {
-                console.error('RapidAPI error:', e);
+            if (!recordingId) {
+                return NextResponse.json(
+                    { error: "Invalid StarMaker URL. Please use a valid recording share link." },
+                    { status: 400 }
+                );
             }
+
+            const result = await downloadStarMaker(cleanedUrl, recordingId);
+
+            if (result) {
+                return NextResponse.json(result);
+            }
+
+            return NextResponse.json(
+                { error: "Unable to fetch StarMaker recording. Please check if the link is valid." },
+                { status: 503 }
+            );
         }
 
-        // Try using a free public API (cobalt.tools - open source, works reliably)
-        try {
-            const response = await fetch('https://api.cobalt.tools/api/json', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+        // ========== INSTAGRAM ==========
+        if (isInstagramUrl(cleanedUrl)) {
+            const shortcode = extractInstagramShortcode(cleanedUrl);
+
+            if (!shortcode) {
+                return NextResponse.json(
+                    { error: "Invalid Instagram URL. Please use a valid post, reel, or story URL." },
+                    { status: 400 }
+                );
+            }
+
+            const result = await downloadInstagram(cleanedUrl, shortcode);
+
+            if (result) {
+                return NextResponse.json(result);
+            }
+
+            // Instagram blocked - return fallback flag
+            return NextResponse.json(
+                {
+                    error: "Unable to fetch media. The post may be private or Instagram is blocking requests.",
+                    fallback: true,
+                    platform: 'instagram',
                 },
-                body: JSON.stringify({
-                    url: cleanedUrl,
-                    isNoTTWatermark: true,
-                }),
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-
-                if (data.status === 'stream' || data.status === 'redirect') {
-                    const mediaUrl = data.url;
-                    const isVideo = mediaUrl?.includes('.mp4') || data.type === 'video';
-
-                    return NextResponse.json({
-                        type: isVideo ? 'video' : 'image',
-                        url: mediaUrl,
-                    } as MediaData);
-                }
-
-                if (data.status === 'picker' && data.picker) {
-                    // Carousel/multiple items
-                    const urls = data.picker.map((item: { url: string }) => item.url);
-                    return NextResponse.json({
-                        type: 'carousel',
-                        url: urls[0],
-                        urls: urls,
-                    });
-                }
-            }
-        } catch (e) {
-            console.error('Cobalt error:', e);
+                { status: 503 }
+            );
         }
 
-        // Try using savetik.co API (works for Instagram too)
-        try {
-            const formData = new URLSearchParams();
-            formData.append('url', cleanedUrl);
-
-            const response = await fetch('https://savetik.co/api/ajaxSearch', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                },
-                body: formData.toString(),
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-
-                if (data.status === 'ok' && data.data) {
-                    // Parse the HTML for download links
-                    const htmlContent = data.data;
-
-                    // Find video/image download links
-                    const linkMatch = htmlContent.match(/href="(https?:\/\/[^"]+(?:\.mp4|\.jpg)[^"]*)"/i);
-                    if (linkMatch) {
-                        const mediaUrl = linkMatch[1].replace(/&amp;/g, '&');
-                        const isVideo = mediaUrl.includes('.mp4');
-
-                        return NextResponse.json({
-                            type: isVideo ? 'video' : 'image',
-                            url: mediaUrl,
-                        } as MediaData);
-                    }
-                }
-            }
-        } catch (e) {
-            console.error('Savetik error:', e);
-        }
-
-        // If nothing works, return helpful error
+        // ========== UNSUPPORTED PLATFORM ==========
         return NextResponse.json(
-            {
-                error: "Unable to fetch media from Instagram. The post may be private or Instagram is blocking automated requests.",
-                suggestion: "For reliable downloads, add a RAPIDAPI_KEY to your .env.local file. Get a free key from rapidapi.com/search/instagram%20downloader",
-                shortcode: shortcode,
-            },
-            { status: 503 }
+            { error: "Unsupported URL. Please use Instagram or StarMaker links." },
+            { status: 400 }
         );
 
     } catch (error) {

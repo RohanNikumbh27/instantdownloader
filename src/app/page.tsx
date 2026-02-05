@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Instagram, Download, Zap, Shield } from "lucide-react";
+import { Instagram, Download, Zap, Shield, Music } from "lucide-react";
 import { DownloadForm } from "@/components/download-form";
 import { Particles } from "@/components/ui/particles";
 import { AnimatedShinyText } from "@/components/ui/animated-shiny-text";
@@ -50,39 +50,42 @@ export default function Home() {
         >
           {/* Logo */}
           <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ type: "spring", stiffness: 200, delay: 0.1 }}
-            className="relative inline-block mb-6"
-          >
-            <div className="relative">
-              <div className="absolute inset-0 instagram-gradient rounded-2xl blur-xl opacity-50 animate-pulse" />
-              <div className="relative instagram-gradient p-4 rounded-2xl">
-                <Instagram className="w-12 h-12 md:w-16 md:h-16 text-white" />
-              </div>
-            </div>
-          </motion.div>
-
-          {/* Title */}
-          <motion.h1
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="text-4xl md:text-6xl lg:text-7xl font-bold mb-4"
+            className="text-center mb-12"
           >
-            <span className="text-foreground">Instant</span>
-            <span className="instagram-gradient-text">Downloader</span>
-          </motion.h1>
+            <div className="flex justify-center mb-6 relative">
+              <div className="relative">
+                <div className="absolute inset-0 bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600 blur-xl opacity-50 rounded-3xl animate-pulse" />
+                <div className="relative bg-background/80 backdrop-blur-xl p-4 rounded-3xl border border-white/10 shadow-2xl">
+                  <Download className="w-12 h-12 text-foreground" />
+                </div>
+                {/* Floating Icons */}
+                <motion.div
+                  animate={{ y: [0, -10, 0] }}
+                  transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                  className="absolute -right-6 -top-6 bg-gradient-to-tr from-purple-600 to-pink-600 p-2 rounded-xl shadow-lg"
+                >
+                  <Instagram className="w-6 h-6 text-white" />
+                </motion.div>
+                <motion.div
+                  animate={{ y: [0, -10, 0] }}
+                  transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay: 1.5 }}
+                  className="absolute -left-6 -bottom-6 bg-gradient-to-tr from-yellow-400 to-orange-500 p-2 rounded-xl shadow-lg"
+                >
+                  <Music className="w-6 h-6 text-white" />
+                </motion.div>
+              </div>
+            </div>
 
-          {/* Subtitle with shiny effect */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="mb-8"
-          >
+            <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-4">
+              <span className="text-foreground">Instant</span>
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500">Downloader</span>
+            </h1>
+
             <AnimatedShinyText className="text-xl md:text-2xl text-muted-foreground/80">
-              Download Instagram Posts, Reels & Stories in HD
+              Download Instagram Posts, Reels, Stories & StarMaker Songs in HD
             </AnimatedShinyText>
           </motion.div>
 
@@ -93,7 +96,7 @@ export default function Home() {
             transition={{ delay: 0.4 }}
             className="text-muted-foreground max-w-xl mx-auto text-sm md:text-base"
           >
-            Just paste the Instagram URL and download your favorite content instantly.
+            Just paste the Instagram or StarMaker URL and download your favorite content instantly.
             No login required. Free and unlimited.
           </motion.p>
         </motion.div>

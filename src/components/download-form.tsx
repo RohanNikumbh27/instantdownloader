@@ -2,9 +2,17 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Download, Link2, Clipboard, Loader2, AlertCircle, CheckCircle2, ExternalLink } from "lucide-react";
+import { Download, Link2, Clipboard, Loader2, AlertCircle, CheckCircle2, ExternalLink, Music, Play } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ShimmerButton } from "@/components/ui/shimmer-button";
+
+interface DownloadResult {
+    type: "image" | "video" | "audio" | "carousel";
+    url: string;
+    thumbnail?: string;
+    title?: string;
+    platform?: "instagram" | "starmaker";
+}
 
 export function DownloadForm() {
     const [url, setUrl] = useState("");
@@ -12,10 +20,23 @@ export function DownloadForm() {
     const [error, setError] = useState("");
     const [copied, setCopied] = useState(false);
     const [showExternalOption, setShowExternalOption] = useState(false);
+    const [result, setResult] = useState<DownloadResult | null>(null);
 
-    const validateInstagramUrl = (inputUrl: string): boolean => {
-        const instagramRegex = /^https?:\/\/(www\.)?instagram\.com\/(p|reel|reels|stories)\/[A-Za-z0-9_-]+/;
-        return instagramRegex.test(inputUrl);
+    const detectPlatform = (inputUrl: string): "instagram" | "starmaker" | null => {
+        if (inputUrl.includes("instagram.com")) return "instagram";
+        if (inputUrl.includes("starmakerstudios.com") || inputUrl.includes("starmaker.co")) return "starmaker";
+        return null;
+    };
+
+    const validateUrl = (inputUrl: string): boolean => {
+        const platform = detectPlatform(inputUrl);
+        if (platform === "instagram") {
+            return /^https?:\/\/(www\.)?instagram\.com\/(p|reel|reels|stories)\/[A-Za-z0-9_-]+/.test(inputUrl);
+        }
+        if (platform === "starmaker") {
+            return /recordingId=\d+/.test(inputUrl);
+        }
+        return false;
     };
 
     const handlePaste = async () => {
@@ -24,6 +45,7 @@ export function DownloadForm() {
             setUrl(text);
             setError("");
             setShowExternalOption(false);
+            setResult(null);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
         } catch {
@@ -33,18 +55,29 @@ export function DownloadForm() {
 
     const handleDownload = async () => {
         if (!url.trim()) {
-            setError("Please enter an Instagram URL");
+            setError("Please enter a URL");
             return;
         }
 
-        if (!validateInstagramUrl(url)) {
-            setError("Please enter a valid Instagram post, reel, or story URL");
+        const platform = detectPlatform(url);
+        if (!platform) {
+            setError("Unsupported URL. Please use Instagram or StarMaker links.");
+            return;
+        }
+
+        if (!validateUrl(url)) {
+            if (platform === "instagram") {
+                setError("Please enter a valid Instagram post, reel, or story URL");
+            } else {
+                setError("Please enter a valid StarMaker recording URL");
+            }
             return;
         }
 
         setLoading(true);
         setError("");
         setShowExternalOption(false);
+        setResult(null);
 
         try {
             const response = await fetch("/api/download", {
@@ -56,53 +89,57 @@ export function DownloadForm() {
             const data = await response.json();
 
             if (!response.ok) {
-                // Show external download options
-                setShowExternalOption(true);
+                if (data.fallback && platform === "instagram") {
+                    setShowExternalOption(true);
+                }
                 setError(data.error || "Failed to fetch media");
                 return;
             }
 
-            // Direct download the media
-            if (data.url) {
-                await downloadMedia(data.url, data.type);
-            }
+            // Show result with preview
+            setResult(data);
         } catch (err) {
-            setShowExternalOption(true);
             setError(err instanceof Error ? err.message : "Something went wrong");
         } finally {
             setLoading(false);
         }
     };
 
-    const downloadMedia = async (mediaUrl: string, type: string) => {
+    const downloadMedia = async () => {
+        if (!result?.url) return;
+
         try {
-            const response = await fetch(mediaUrl);
+            const response = await fetch(result.url);
             const blob = await response.blob();
             const blobUrl = URL.createObjectURL(blob);
             const link = document.createElement("a");
             link.href = blobUrl;
-            link.download = `instagram_${Date.now()}.${type === "video" ? "mp4" : "jpg"}`;
+
+            const platform = result.platform || "media";
+            const ext = result.type === "video" ? "mp4" : result.type === "audio" ? "mp3" : "jpg";
+            link.download = `${platform}_${Date.now()}.${ext}`;
+
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(blobUrl);
         } catch {
-            window.open(mediaUrl, "_blank");
+            window.open(result.url, "_blank");
         }
     };
 
     const openExternalDownloader = (service: string) => {
         const encodedUrl = encodeURIComponent(url);
-
         const services: Record<string, string> = {
             snapinsta: `https://snapinsta.app/en2?url=${encodedUrl}`,
             saveinsta: `https://www.saveinsta.cam/?url=${encodedUrl}`,
             igram: `https://igram.io/?url=${encodedUrl}`,
             saveig: `https://saveig.app/en?url=${encodedUrl}`,
         };
-
         window.open(services[service] || services.snapinsta, "_blank");
     };
+
+    const platform = detectPlatform(url);
 
     return (
         <div className="w-full max-w-2xl mx-auto space-y-6">
@@ -119,12 +156,13 @@ export function DownloadForm() {
                             <Link2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                             <Input
                                 type="url"
-                                placeholder="Paste Instagram URL here..."
+                                placeholder="Paste Instagram or StarMaker URL..."
                                 value={url}
                                 onChange={(e) => {
                                     setUrl(e.target.value);
                                     setError("");
                                     setShowExternalOption(false);
+                                    setResult(null);
                                 }}
                                 onKeyDown={(e) => e.key === "Enter" && handleDownload()}
                                 className="pl-12 h-14 bg-secondary/50 border-border/50 rounded-xl text-base focus:ring-2 focus:ring-primary/50 transition-all"
@@ -138,21 +176,11 @@ export function DownloadForm() {
                         >
                             <AnimatePresence mode="wait">
                                 {copied ? (
-                                    <motion.div
-                                        key="check"
-                                        initial={{ scale: 0 }}
-                                        animate={{ scale: 1 }}
-                                        exit={{ scale: 0 }}
-                                    >
+                                    <motion.div key="check" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}>
                                         <CheckCircle2 className="w-5 h-5 text-green-500" />
                                     </motion.div>
                                 ) : (
-                                    <motion.div
-                                        key="clipboard"
-                                        initial={{ scale: 0 }}
-                                        animate={{ scale: 1 }}
-                                        exit={{ scale: 0 }}
-                                    >
+                                    <motion.div key="clipboard" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}>
                                         <Clipboard className="w-5 h-5" />
                                     </motion.div>
                                 )}
@@ -160,12 +188,36 @@ export function DownloadForm() {
                         </motion.button>
                     </div>
 
+                    {/* Platform indicator */}
+                    {platform && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            className="flex items-center gap-2 text-sm text-muted-foreground"
+                        >
+                            {platform === "instagram" ? (
+                                <>
+                                    <div className="w-2 h-2 rounded-full bg-gradient-to-r from-pink-500 to-purple-500" />
+                                    <span>Instagram detected</span>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="w-2 h-2 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500" />
+                                    <span>StarMaker detected</span>
+                                </>
+                            )}
+                        </motion.div>
+                    )}
+
                     <ShimmerButton
                         onClick={handleDownload}
                         disabled={loading}
                         className="w-full h-14 text-lg font-semibold"
                         shimmerColor="#ffffff"
-                        background="linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)"
+                        background={platform === "starmaker"
+                            ? "linear-gradient(45deg, #f59e0b, #f97316, #ef4444)"
+                            : "linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)"
+                        }
                     >
                         {loading ? (
                             <span className="flex items-center gap-2">
@@ -180,6 +232,55 @@ export function DownloadForm() {
                         )}
                     </ShimmerButton>
                 </div>
+
+                {/* Success Result */}
+                <AnimatePresence>
+                    {result && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 10 }}
+                            className="mt-6 p-4 bg-green-500/10 border border-green-500/20 rounded-xl"
+                        >
+                            <div className="flex items-start gap-4">
+                                {result.thumbnail ? (
+                                    <img
+                                        src={result.thumbnail}
+                                        alt="Preview"
+                                        className="w-20 h-20 rounded-lg object-cover"
+                                    />
+                                ) : (
+                                    <div className="w-20 h-20 rounded-lg bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center">
+                                        {result.platform === "starmaker" ? (
+                                            <Music className="w-8 h-8 text-white" />
+                                        ) : (
+                                            <Play className="w-8 h-8 text-white" />
+                                        )}
+                                    </div>
+                                )}
+                                <div className="flex-1">
+                                    <p className="text-sm text-green-500 font-medium mb-1">
+                                        ✓ Media found!
+                                    </p>
+                                    {result.title && (
+                                        <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
+                                            {result.title}
+                                        </p>
+                                    )}
+                                    <motion.button
+                                        whileHover={{ scale: 1.02 }}
+                                        whileTap={{ scale: 0.98 }}
+                                        onClick={downloadMedia}
+                                        className="px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-medium flex items-center gap-2"
+                                    >
+                                        <Download className="w-4 h-4" />
+                                        Save {result.type === "video" ? "Video" : result.type === "audio" ? "Audio" : "Image"}
+                                    </motion.button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
                 {/* Error Message */}
                 <AnimatePresence>
@@ -196,9 +297,9 @@ export function DownloadForm() {
                     )}
                 </AnimatePresence>
 
-                {/* External Download Options */}
+                {/* External Download Options (Instagram only) */}
                 <AnimatePresence>
-                    {showExternalOption && url && (
+                    {showExternalOption && url && platform === "instagram" && (
                         <motion.div
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
