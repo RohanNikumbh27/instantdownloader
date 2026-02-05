@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Instagram, Download, Zap, Shield, Music } from "lucide-react";
+import Image from "next/image";
 import { DownloadForm } from "@/components/download-form";
 import { Particles } from "@/components/ui/particles";
 import { AnimatedShinyText } from "@/components/ui/animated-shiny-text";
@@ -57,25 +58,15 @@ export default function Home() {
           >
             <div className="flex justify-center mb-6 relative">
               <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600 blur-xl opacity-50 rounded-3xl animate-pulse" />
-                <div className="relative bg-background/80 backdrop-blur-xl p-4 rounded-3xl border border-white/10 shadow-2xl">
-                  <Download className="w-12 h-12 text-foreground" />
-                </div>
-                {/* Floating Icons */}
-                <motion.div
-                  animate={{ y: [0, -10, 0] }}
-                  transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-                  className="absolute -right-6 -top-6 bg-gradient-to-tr from-purple-600 to-pink-600 p-2 rounded-xl shadow-lg"
-                >
-                  <Instagram className="w-6 h-6 text-white" />
-                </motion.div>
-                <motion.div
-                  animate={{ y: [0, -10, 0] }}
-                  transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay: 1.5 }}
-                  className="absolute -left-6 -bottom-6 bg-gradient-to-tr from-yellow-400 to-orange-500 p-2 rounded-xl shadow-lg"
-                >
-                  <Music className="w-6 h-6 text-white" />
-                </motion.div>
+                <div className="absolute inset-0 bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600 blur-2xl opacity-40 rounded-full animate-pulse" />
+                <Image
+                  src="/logo.png"
+                  alt="InstantDownloader Logo"
+                  width={96}
+                  height={96}
+                  className="w-24 h-24 object-contain relative z-10 drop-shadow-2xl rounded-full"
+                  priority
+                />
               </div>
             </div>
 
