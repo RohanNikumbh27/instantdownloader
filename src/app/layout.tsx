@@ -7,16 +7,29 @@ const outfit = Outfit({
   variable: "--font-outfit",
 });
 
+export const viewport = {
+  themeColor: '#000000',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+};
+
 export const metadata: Metadata = {
-  title: "InstantDownloader - Download Instagram Posts & Stories",
-  description: "Download Instagram posts, reels, and stories instantly. Just paste the URL and save your favorite content.",
-  keywords: ["instagram downloader", "instagram posts", "instagram stories", "download instagram", "save instagram"],
+  title: "InstantDownloader - Download Instagram & StarMaker Content",
+  description: "Download Instagram posts, reels, stories & StarMaker songs instantly in HD. Just paste the URL and save your favorite content.",
+  keywords: ["instagram downloader", "starmaker downloader", "instagram reels", "starmaker songs", "video downloader"],
   authors: [{ name: "ROHANTA" }],
+  manifest: '/manifest.webmanifest',
   openGraph: {
-    title: "InstantDownloader - Download Instagram Posts & Stories",
-    description: "Download Instagram posts, reels, and stories instantly. Just paste the URL and save your favorite content.",
+    title: "InstantDownloader - Download Instagram & StarMaker Content",
+    description: "Download Instagram posts, reels, stories & StarMaker songs instantly in HD.",
     type: "website",
   },
+  icons: {
+    icon: '/logo.png',
+    shortcut: '/logo.png',
+    apple: '/logo.png',
+  }
 };
 
 export default function RootLayout({
