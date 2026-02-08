@@ -11,7 +11,35 @@ interface DownloadResult {
     url: string;
     thumbnail?: string;
     title?: string;
-    platform?: "instagram" | "starmaker";
+    platform?: "instagram" | "starmaker" | "youtube";
+}
+
+interface YoutubeFormat {
+    itag: number;
+    qualityLabel: string;
+    container: string;
+    hasAudio: boolean;
+    hasVideo: boolean;
+    url: string;
+    size?: number;
+}
+
+interface YoutubeInfo {
+    title: string;
+    thumbnail: string;
+    duration: string;
+    formats: YoutubeFormat[];
+    audioFormats: YoutubeFormat[];
+    bestAudio: YoutubeFormat;
+}
+
+function formatBytes(bytes: number, decimals = 2) {
+    if (!bytes) return "Unknown";
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
 }
 
 export function DownloadForm() {
@@ -21,11 +49,18 @@ export function DownloadForm() {
     const [error, setError] = useState("");
     const [copied, setCopied] = useState(false);
     const [showExternalOption, setShowExternalOption] = useState(false);
-    const [result, setResult] = useState<DownloadResult | null>(null);
 
-    const detectPlatform = (inputUrl: string): "instagram" | "starmaker" | null => {
+    const [result, setResult] = useState<DownloadResult | null>(null);
+    const [youtubeInfo, setYoutubeInfo] = useState<YoutubeInfo | null>(null);
+    const [activeTab, setActiveTab] = useState<"video" | "audio">("video");
+    const [downloadingItem, setDownloadingItem] = useState<number | null>(null); // itag of currently downloading item
+
+
+
+    const detectPlatform = (inputUrl: string): "instagram" | "starmaker" | "youtube" | null => {
         if (inputUrl.includes("instagram.com")) return "instagram";
         if (inputUrl.includes("starmakerstudios.com") || inputUrl.includes("starmaker.co")) return "starmaker";
+        if (inputUrl.match(/(youtube\.com|youtu\.be)/)) return "youtube";
         return null;
     };
 
@@ -36,6 +71,10 @@ export function DownloadForm() {
         }
         if (platform === "starmaker") {
             return /recordingId=\d+/.test(inputUrl);
+        }
+
+        if (platform === "youtube") {
+            return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/.test(inputUrl);
         }
         return false;
     };
@@ -53,7 +92,9 @@ export function DownloadForm() {
             setUrl(extractedUrl);
             setError(""); // Keep existing error clear
             setShowExternalOption(false); // Keep existing option clear
+
             setResult(null); // Keep existing result clear
+            setYoutubeInfo(null);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
 
@@ -85,19 +126,23 @@ export function DownloadForm() {
 
         setError("");
         setShowExternalOption(false);
+
         setResult(null);
+        setYoutubeInfo(null);
         setLoading(true);
 
         const platform = detectPlatform(targetUrl); // Use targetUrl for platform detection
         if (!platform) {
-            setError("Unsupported URL. Please use Instagram or StarMaker links.");
+            setError("Unsupported URL. Please use Instagram, StarMaker, or YouTube links.");
         }
 
         if (!validateUrl(url)) {
             if (platform === "instagram") {
                 setError("Please enter a valid Instagram post, reel, or story URL");
-            } else {
+            } else if (platform === "starmaker") {
                 setError("Please enter a valid StarMaker recording URL");
+            } else if (platform === "youtube") {
+                setError("Please enter a valid YouTube URL");
             }
             return;
         }
@@ -105,7 +150,35 @@ export function DownloadForm() {
         setLoading(true);
         setError("");
         setShowExternalOption(false);
+
         setResult(null);
+        setYoutubeInfo(null);
+
+        // Handle YouTube Separately
+        if (platform === "youtube") {
+            try {
+                const response = await fetch("/api/youtube/info", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ url: targetUrl }),
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    setError(data.error || "Failed to fetch YouTube info");
+                    setLoading(false);
+                    return;
+                }
+
+                setYoutubeInfo(data);
+            } catch (err) {
+                setError("Failed to fetch YouTube info");
+            } finally {
+                setLoading(false);
+            }
+            return;
+        }
 
         try {
             const response = await fetch("/api/download", {
@@ -159,6 +232,28 @@ export function DownloadForm() {
         }
     };
 
+    const handleYoutubeDownload = async (itag: number, title: string, ext: string = "mp4") => {
+        setDownloadingItem(itag);
+        try {
+            // Create a hidden iframe or link to trigger the download endpoint
+            const downloadUrl = `/api/youtube/download?url=${encodeURIComponent(url)}&itag=${itag}&title=${encodeURIComponent(title)}&ext=${ext}`;
+
+            // Trigger download
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.setAttribute('download', ''); // hint to browser
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+        } catch (e) {
+            setError("Download failed to start");
+        } finally {
+            // Small delay to reset state visually
+            setTimeout(() => setDownloadingItem(null), 2000);
+        }
+    };
+
     const openExternalDownloader = (service: string) => {
         const encodedUrl = encodeURIComponent(url);
         const services: Record<string, string> = {
@@ -187,13 +282,14 @@ export function DownloadForm() {
                             <Link2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                             <Input
                                 type="url"
-                                placeholder="Paste Instagram or StarMaker URL..."
+                                placeholder="Paste Instagram, StarMaker, or YouTube URL..."
                                 value={url}
                                 onChange={(e) => {
                                     setUrl(e.target.value);
                                     setError("");
                                     setShowExternalOption(false);
                                     setResult(null);
+                                    setYoutubeInfo(null);
                                 }}
                                 onKeyDown={(e) => e.key === "Enter" && handleDownload()}
                                 className="pl-12 h-14 bg-secondary/50 border-border/50 rounded-xl text-base focus:ring-2 focus:ring-primary/50 transition-all"
@@ -231,10 +327,15 @@ export function DownloadForm() {
                                     <div className="w-2 h-2 rounded-full bg-gradient-to-r from-pink-500 to-purple-500" />
                                     <span>Instagram detected</span>
                                 </>
-                            ) : (
+                            ) : platform === "starmaker" ? (
                                 <>
                                     <div className="w-2 h-2 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500" />
                                     <span>StarMaker detected</span>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="w-2 h-2 rounded-full bg-red-600" />
+                                    <span>YouTube detected</span>
                                 </>
                             )}
                         </motion.div>
@@ -247,7 +348,9 @@ export function DownloadForm() {
                         shimmerColor="#ffffff"
                         background={platform === "starmaker"
                             ? "linear-gradient(45deg, #f59e0b, #f97316, #ef4444)"
-                            : "linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)"
+                            : platform === "youtube"
+                                ? "linear-gradient(45deg, #ff0000, #cc0000)"
+                                : "linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)"
                         }
                     >
                         {loading ? (
@@ -360,6 +463,113 @@ export function DownloadForm() {
                                             >
                                                 <ExternalLink className="w-5 h-5 text-muted-foreground" />
                                             </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                {/* YouTube Result */}
+                <AnimatePresence>
+                    {youtubeInfo && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 10 }}
+                            className="mt-8"
+                        >
+                            <div className="relative overflow-hidden rounded-2xl bg-secondary/30 border border-white/10 p-6 backdrop-blur-md">
+                                {/* Background Glow */}
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-red-500/20 to-orange-500/20 rounded-full blur-3xl -z-10" />
+
+                                <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
+                                    {/* Thumbnail */}
+                                    <motion.img
+                                        src={youtubeInfo.thumbnail}
+                                        alt={youtubeInfo.title}
+                                        className="w-full md:w-48 aspect-video rounded-xl object-cover shadow-lg border border-white/10"
+                                        initial={{ scale: 0.95 }}
+                                        animate={{ scale: 1 }}
+                                    />
+
+                                    <div className="flex-1 w-full">
+                                        <h3 className="text-lg font-semibold line-clamp-2 mb-4">{youtubeInfo.title}</h3>
+
+                                        {/* Tabs */}
+                                        <div className="flex p-1 bg-secondary/50 rounded-xl mb-4">
+                                            <button
+                                                onClick={() => setActiveTab("video")}
+                                                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === "video"
+                                                    ? "bg-white text-black shadow-sm"
+                                                    : "text-muted-foreground hover:text-white"
+                                                    }`}
+                                            >
+                                                Video
+                                            </button>
+                                            <button
+                                                onClick={() => setActiveTab("audio")}
+                                                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === "audio"
+                                                    ? "bg-white text-black shadow-sm"
+                                                    : "text-muted-foreground hover:text-white"
+                                                    }`}
+                                            >
+                                                Audio
+                                            </button>
+                                        </div>
+
+                                        {/* Format List */}
+                                        <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                                            {(activeTab === "video" ? youtubeInfo.formats : youtubeInfo.audioFormats).map((fmt) => (
+                                                <div
+                                                    key={fmt.itag}
+                                                    className="flex items-center justify-between p-3 rounded-xl bg-secondary/30 border border-white/5 hover:bg-secondary/50 transition-colors"
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${activeTab === "video"
+                                                            ? "bg-orange-500/20 text-orange-500"
+                                                            : "bg-purple-500/20 text-purple-500"
+                                                            }`}>
+                                                            {activeTab === "video" ? "MP4" : "MP3"}
+                                                        </div>
+                                                        <div className="flex flex-col">
+                                                            <span className="font-medium text-sm flex items-center gap-2">
+                                                                {fmt.qualityLabel || (activeTab === "video" ? "Video" : "Audio")}
+                                                                {activeTab === "video" && !fmt.hasAudio && (
+                                                                    <span className="text-[10px] uppercase tracking-wider bg-secondary/50 border border-white/10 px-1.5 py-0.5 rounded text-muted-foreground" title="Video only, no sound">
+                                                                        No Sound
+                                                                    </span>
+                                                                )}
+                                                            </span>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {formatBytes(fmt.size || 0)} • {fmt.container}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    <button
+                                                        onClick={() => handleYoutubeDownload(fmt.itag, youtubeInfo.title, fmt.container)}
+                                                        disabled={downloadingItem === fmt.itag}
+                                                        className={`px-4 py-2 rounded-lg text-xs font-medium flex items-center gap-2 transition-all ${downloadingItem === fmt.itag
+                                                            ? "bg-secondary text-muted-foreground cursor-wait"
+                                                            : "bg-white text-black hover:bg-white/90"
+                                                            }`}
+                                                    >
+                                                        {downloadingItem === fmt.itag ? (
+                                                            <>
+                                                                <Loader2 className="w-3 h-3 animate-spin" />
+                                                                Saving...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Download className="w-3 h-3" />
+                                                                Download
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
                                 </div>

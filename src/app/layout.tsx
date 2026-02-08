@@ -15,7 +15,7 @@ export const viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "InstantDownloader - Download Instagram & StarMaker Content",
+  title: "InstantDownloader",
   description: "Download Instagram posts, reels, stories & StarMaker songs instantly in HD. Just paste the URL and save your favorite content.",
   keywords: ["instagram downloader", "starmaker downloader", "instagram reels", "starmaker songs", "video downloader"],
   authors: [{ name: "ROHANTA" }],
