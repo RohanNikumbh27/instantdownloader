@@ -33,13 +33,13 @@ export default function Home() {
       <Particles
         className="absolute inset-0 -z-10"
         quantity={80}
-        color="#E1306C"
+        color="#ff0000"
         staticity={30}
       />
 
       {/* Decorative gradient orbs */}
-      <div className="absolute top-20 left-10 w-72 h-72 bg-gradient-to-br from-pink-500/20 to-purple-500/20 rounded-full blur-3xl -z-10" />
-      <div className="absolute bottom-20 right-10 w-96 h-96 bg-gradient-to-br from-orange-500/15 to-pink-500/15 rounded-full blur-3xl -z-10" />
+      <div className="absolute top-20 left-10 w-72 h-72 bg-gradient-to-br from-pink-500/20 via-red-500/20 to-purple-500/20 rounded-full blur-3xl -z-10" />
+      <div className="absolute bottom-20 right-10 w-96 h-96 bg-gradient-to-br from-orange-500/15 via-red-500/15 to-pink-500/15 rounded-full blur-3xl -z-10" />
 
       <div className="container mx-auto px-4 py-16 md:py-24">
         {/* Hero Section */}
@@ -72,11 +72,11 @@ export default function Home() {
 
             <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-4">
               <span className="text-foreground">Instant</span>
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500">Downloader</span>
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-purple-500 via-pink-500 to-red-500">Downloader</span>
             </h1>
 
             <AnimatedShinyText className="text-xl md:text-2xl text-muted-foreground/80">
-              Download Instagram Posts, Reels, Stories & StarMaker Songs in HD
+              Download Instagram, YouTube & StarMaker Media in HD
             </AnimatedShinyText>
           </motion.div>
 
@@ -114,8 +114,8 @@ export default function Home() {
               >
                 <div className="glass rounded-2xl p-6 h-full transition-all duration-300 hover:border-primary/30">
                   <div className="relative mb-4">
-                    <div className="absolute inset-0 instagram-gradient rounded-xl blur-lg opacity-0 group-hover:opacity-50 transition-opacity" />
-                    <div className="relative instagram-gradient w-12 h-12 rounded-xl flex items-center justify-center">
+                    <div className="absolute inset-0 bg-gradient-to-br from-pink-500 via-red-500 to-orange-500 rounded-xl blur-lg opacity-0 group-hover:opacity-50 transition-opacity" />
+                    <div className="relative bg-gradient-to-br from-pink-500 via-red-500 to-orange-500 w-12 h-12 rounded-xl flex items-center justify-center">
                       <feature.icon className="w-6 h-6 text-white" />
                     </div>
                   </div>
@@ -140,6 +140,14 @@ export default function Home() {
               <span
                 key={format}
                 className="px-4 py-2 text-sm glass rounded-full text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {format}
+              </span>
+            ))}
+            {["YouTube Videos", "Shorts"].map((format) => (
+              <span
+                key={format}
+                className="px-4 py-2 text-sm glass rounded-full text-muted-foreground hover:text-red-500 transition-colors border-red-500/20 hover:border-red-500/50"
               >
                 {format}
               </span>
